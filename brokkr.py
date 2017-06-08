@@ -159,4 +159,4 @@ async def on_message(message):
 #        msg = await brokkr.wait_for_message(author=message.author)
 #        await brokkr.send_message(message.channel, 'Fuck you.')
 
-brokkr.run("MzA3ODk1NTMxMzYxNzk2MDk3.C_SqyA.AGvHi6Igz_VP9MDZiCTGZICjTgc")
+brokkr.run("Bot Token")
