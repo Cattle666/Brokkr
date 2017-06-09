@@ -141,6 +141,9 @@ async def on_message(message):
 #async def on_message(message):
 #    print('one')
 #
+#brokkr.event
+#async def on_message(message):    
+#'''Random rare pepe post. Works! Must set up folder with pics internally.'''
 #    if(message.content.startswith("~pepe")):
 #        imgList = os.listdir("pepe")
 #        imgString = random.choice(imgList)
