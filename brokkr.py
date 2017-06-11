@@ -22,7 +22,7 @@ brokkr = Bot(command_prefix="$")
 
 async def joinVoiceChannel():
     '''Example of simple script for bot to join specific voice channel'''    
-    channel = brokkr.get_channel('300631190002466818')
+    channel = brokkr.get_channel('VC_CHANNEL_ID_HERE')
     voice = await brokkr.join_voice_channel(channel)
     print('Brokkr has joined Staff')
 
