@@ -4,6 +4,7 @@ print("Begin Brokkr intialization sequence...")
 
 import asyncio
 import aiohttp
+from collections import namedtuple
 import datetime
 import discord
 from discord.ext.commands import Bot
@@ -13,128 +14,204 @@ from os import path
 import urllib.request
 import urllib.parse
 import re
-import string
+from string import punctuation
 import json
 
 os.chdir(path.dirname(path.abspath(__file__)))
 
 brokkr = Bot(command_prefix="$")
 
+# Used to define both commands and callbacks:
+Responder = namedtuple("Responder", ("trigger", "run"))
+
+# Used to create fake messges that only contain a content attribute:
+Message_stub = namedtuple('Message_stub', 'content')
+
+repo_dir = '/srv/zandronum/wads'
+
+trigger_prefix = r"(^| |[" + punctuation + "])"
+trigger_suffix = r"( |[" + punctuation + "]|$)"
+
+
+async def check_responder(responder, message):
+    '''
+    Checks if a given message should trigger a responder returning the response
+    if so.
+    '''
+
+    if responder.trigger.search(message.content):
+        return responder.run
+
+
+async def cmd_hello(message):
+    '''
+    Says hello to the user.
+    '''
+
+    return 'Hello {0.author.mention}'.format(message)
+
+
+async def cmd_help(message):
+    return '''
+        Greetings {0.author.mention} , here are the commands:
+         ```$test``` = shows the amount of messages user has in a channel
+         ```$sleep``` = puts the bot to sleep momentarily
+         ```$hello``` = bot says hello to user
+         ```$repo_wad``` = lists wads in VGP repository
+         ```$repo_pk3``` = lists pk3s in the VGP repository
+         ```$quit``` = Logs Brokkr out of the server
+         ```$meow``` = posts a random rare cat pic
+         ```$search``` = Search VGP repo for a game file
+    '''.format(message)
+
+
+async def cmd_meow(message):
+    '''
+    Random cat. Pulled from discord.py example.
+    '''
+
+    async with aiohttp.get('http://random.cat/meow') as r:
+        if r.status == 200:
+            js = await r.json()
+            return js['file']
+        else:
+            return 'random cat service error {}'.format(r.status)
+
+
+async def cmd_quit(message):
+    await brokkr.logout()
+
+
+async def cmd_repo_pk3(message):
+    '''
+    search the repository for pk3 files.  This can be achieved with $search
+    *.pk3 instead and can be deprecated.
+    '''
+
+    return cmd_search(Message_stub('$search *.pk3'))
+
+
+async def cmd_repo_wad(message):
+    '''
+    search the repository for wad files.  This can be achieved with $search
+    *.wad instead and can be deprecated.
+    '''
+
+    return cmd_search(Message_stub('$search *.wad'))
+
+
+async def cmd_search(message):
+    '''
+    Search VGP repository for specific game file.
+    '''
+
+    # remove extra whitespace and leading directory components that could lead
+    # to directory traversal attacks:
+    param = os.path.basename(message.content[8:].strip())
+    # make the glob case insensitive:
+    param = ''.join('[{}{}]'.format(c.upper(), c.lower()) if c.isalpha() else c for c in param)
+    return file_search_report(file_search(repo_dir, param))
+
+
+
+async def cmd_sleep(message):
+    '''
+    Causes the bot to become unresponsive for 5 seconds.
+    '''
+
+    await asyncio.sleep(5)
+    await brokkr.send_message(message.channel, 'Done sleeping')
+
+
+async def cmd_test(message):
+    '''
+    Pulled from discord.py example bot.
+    '''
+
+    counter = 0
+    tmp = await brokkr.send_message(message.channel, 'Calculating messages...')
+    async for log in brokkr.logs_from(message.channel, limit=100):
+        if log.author == message.author:
+            counter += 1
+
+    await brokkr.edit_message(tmp, 'You have {} messages.'.format(counter))
+
+
+def file_search(directory, query, recursive=True):
+    '''
+    Returns an iterable of file names in a directory ending with a given
+    extension.
+    '''
+
+    cwd = os.getcwd()
+    os.chdir(directory)
+    results = glob.glob(query, recursive=recursive)
+    os.chdir(cwd)
+    results.sort()
+    return results
+
+
+def file_search_report(results):
+    if results:
+        md_list = '\n'.join(map(lambda r: ' * ' + r, results))
+        return '{} results found:\n' + md_list
+
+    return 'no results found'
+
+
 async def joinVoiceChannel():
-    '''Example of simple script for bot to join specific voice channel'''    
+    '''
+    Example of simple script for bot to join specific voice channel
+    ''' 
+
     channel = brokkr.get_channel('VC_CHANNEL_ID_HERE')
     voice = await brokkr.join_voice_channel(channel)
     print('Brokkr has joined Staff')
 
-@brokkr.event
-async def on_ready():
-    '''Completion of joining voice channel and backend identification...'''
-    print('Logged in as:')
-    print('Username: ' + brokkr.user.name)
-    print('ID: ' + brokkr.user.id)
-    print('------')
-    await joinVoiceChannel()
-    if not hasattr(brokkr, 'uptime'):
-        brokkr.uptime = datetime.datetime.utcnow()
 
-@brokkr.event
-async def make_trigger(word):
-    return r"(^| |[" + string.punctuation + "])" + word + r"( |[" + string.punctuation + "]|$)"
-    '''Work in progress. Call and response fun with specific terms.'''
-@brokkr.event
-async def cookie(self, message, match):
-    await make_trigger("cookie")
-    return 'What, you want a cookie!?'
+def make_callback(trigger, run):
+    '''
+    Creates an easy to use object for call/response matching.
+    '''
 
-@brokkr.event
-async def complex_doom(self, message, match):
-    await make_trigger("complex doom")
-    return 'Fuck Complex Doom!'
+    run_fn = run if callable(run) else lambda message: run
+    trigger_re = ''.join(trigger_prefix, trigger, trigger_suffix)
+    return Responder(trigger_re, run_fn)
 
-@brokkr.event
-async def call_of_duty(self, message, match):
-    await make_trigger("call of duty")
-    return 'Worst VG series ever BTW...'
 
-@brokkr.event
-async def shit(self, message, match):
-    await make_trigger("shit")
-    return 'fuck'
+def make_command(name, run):
+    '''
+    Creates an easy to use object for command handling.
+    '''
 
-@brokkr.event
-async def on_message(message):
-    '''Archaic help message. Could use some revision.'''
-    if message.content.startswith('$help'):
-        helpmsg = 'Greetings {0.author.mention} , here are the commands:\n```$test``` = shows the amount of messages user has in a channel\n ```$sleep``` = puts the bot to sleep momentarily\n ```$hello``` = bot says hello to user\n ```$repo_wad``` = lists wads in VGP repository\n ```$repo_pk3``` = lists pk3s in the VGP repository\n ```$quit``` = Logs Brokkr out of the server\n ```$meow``` = posts a random rare cat pic\n ```$search``` = Search VGP repo for a game file'.format(message)
-        await brokkr.send_message(message.channel, helpmsg)
+    return Responder(re.compile(r'^' + name + r'($| .*)'), run)
 
-    if message.content.startswith('$test'):
-        '''Pulled from discord.py example bot.'''
-    	counter = 0
-        tmp = await brokkr.send_message(message.channel, 'Calculating messages...')
-        async for log in brokkr.logs_from(message.channel, limit=100):
-            if log.author == message.author:
-                counter += 1
 
-        await brokkr.edit_message(tmp, 'You have {} messages.'.format(counter))
-    
-    elif message.content.startswith('$sleep'):
-        await asyncio.sleep(5) 
-        await brokkr.send_message(message.channel, 'Done sleeping')
-    
-    if message.author == brokkr.user:
-        return
+responders = (
+    make_callback('call of duty', 'Worst VG series ever BTW...'),
+    mkae_callback('complex doom', 'Fuck Complex Doom!'),
+    make_callback('cookie', 'What, you want a cookie!?'),
+    make_callback('shit', 'fuck'),
+    make_command('$hello', cmd_hello),
+    make_command('$help', cmd_help),
+    make_command('$meow', cmd_meow),
+    make_command('$quit', cmd_quit),
+    make_command('$repo_pk3', cmd_repo_pk3),
+    make_command('$repo_wad', cmd_repo_wad),
+    make_command('$search', cmd_search),
+    make_command('$sleep', cmd_sleep),
+    make_command('$test', cmd_test),
+)
 
-    if message.content.startswith('$hello'):
-        msg = 'Hello {0.author.mention}'.format(message)
-        await brokkr.send_message(message.channel, msg) 
 
-    if message.content.startswith('$repo_wad'):
-        '''Displays all .wad files contained in the VGP repository'''
-        for file in os.listdir("/srv/zandronum/wads/"):
-            if file.endswith(".wad"):
-                wads = os.path.join(file).format(message)
-                await brokkr.send_message(message.channel, wads)    
-    
-    if message.content.startswith('$repo_pk3'):
-        '''Displays all .pk3 files contained in the VGP repository'''
-        for file in os.listdir("/srv/zandronum/wads/"):
-            if file.endswith(".pk3"):
-                pk3s = os.path.join(file).format(message)
-                await brokkr.send_message(message.channel, pk3s)
+async def respond(message):
+    if issubclass(message.__class, str):
+        await brokkr.send_message(message.channel, message)
+    else:
+        # Mostly intended to handle Exceptions:
+        await brokkr.send_message(message.channel, repr(message))
 
-    if message.content.startswith('$meow'):
-        '''Random cat. Pulled from discord.py example'''
-        async with aiohttp.get('http://random.cat/meow') as r:
-            if r.status == 200:
-                js = await r.json()
-                await brokkr.send_message(message.channel, js['file'])
 
-    if message.content.startswith('$search'):
-        '''Search VGP repository for specific game file.'''
-        await brokkr.send_message(message.channel, 'Type $file [filename]')
-
-        def check(msg):
-            return msg.content.startswith('$file')
-
-        message = await brokkr.wait_for_message(author=message.author, check=check)
-        file_name = message.content[len('$file'):].strip()
-        cur_dir = '/srv/zandronum/wads/'
-
-        while True:
-            file_list = os.listdir(cur_dir)
-            parent_dir = os.path.dirname(cur_dir)
-            if file_name in file_list:
-                await brokkr.send_message(message.channel, "File Exists in repository")
-                break
-            else:
-                if cur_dir == parent_dir: #if dir is root dir
-                    await brokkr.send_message(message.channel, "File not found")
-                    break
-                else:
-                    cur_dir = parent_dir
-    if(message.content.startswith("$quit")):
-        await brokkr.logout()
 #Below is a bunch of WIP:
 #
 #@brokkr.listen()
@@ -162,4 +239,62 @@ async def on_message(message):
 #        msg = await brokkr.wait_for_message(author=message.author)
 #        await brokkr.send_message(message.channel, 'Fuck you.')
 
-brokkr.run("Bot Token")
+
+@brokkr.event
+async def on_message(message):
+    '''
+    Called for every incomming message, looks for messages that should trigger
+    some response from the bot.  The async code here could probably be further
+    optimized by pipelining individual contexts instead of staging each part in
+    the process.
+    '''
+    
+    # The bot should completely ignore it's own messages:
+    if message.author == brokkr.user:
+        return
+
+    # check which conditions have been triggered in paralell:
+    responders = (check_responder(r, message) for r in responders)
+
+    # wait for all the checks to complete:
+    responders = asyncio.gather(*responders, return_exceptions=True)
+
+    # generate responses for the triggered conditions in parallel filtering out
+    # the entries that returned None (by default) which do not need to run:
+    responses = (run(message) for run in filter(bool, responders))
+
+    # wait for all responses to be compiled:
+    responses = asyncio.gather(*responses, return_exceptions=True)
+
+    # send out response messages in parallel filtering out those responses that
+    # returned None by default (which probably managed the response itself):
+    messages = (respond(message.channel, r) for r in filter(bool, responses))
+
+    # wait for all responses to be sent out:
+    messages = asyncio.gather(*messages, return_exceptions=True)
+
+    errors = (err for err in messages if issubclass(err.__class__, Exception))
+    if errors:
+        pluralize = 's' if len(errors) > 1 else ''
+        print('on_message response error{}:'.format(pluralize))
+        print('\n'.join(repr(err) for err in errors))
+
+
+@brokkr.event
+async def on_ready():
+    '''
+    Completion of joining voice channel and backend identification...
+    '''
+
+    print('Logged in as:')
+    print('Username: ' + brokkr.user.name)
+    print('ID: ' + brokkr.user.id)
+    print('------')
+    await joinVoiceChannel()
+    if not hasattr(brokkr, 'uptime'):
+        brokkr.uptime = datetime.datetime.utcnow()
+
+
+if __name__ == '__main__':
+    brokkr.run("Bot Token")
+
