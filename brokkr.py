@@ -255,14 +255,14 @@ async def on_message(message):
         return
 
     # check which conditions have been triggered in paralell:
-    responders = (check_responder(r, message) for r in responders)
+    _responders = (check_responder(r, message) for r in responders)
 
     # wait for all the checks to complete:
-    responders = asyncio.gather(*responders, return_exceptions=True)
+    _responders = asyncio.gather(*_responders, return_exceptions=True)
 
     # generate responses for the triggered conditions in parallel filtering out
     # the entries that returned None (by default) which do not need to run:
-    responses = (run(message) for run in filter(bool, responders))
+    responses = (run(message) for run in filter(bool, _responders))
 
     # wait for all responses to be compiled:
     responses = asyncio.gather(*responses, return_exceptions=True)
