@@ -280,6 +280,11 @@ async def on_message(message):
         print('on_message response error{}:'.format(pluralize))
         print('\n'.join(repr(err) for err in errors))
 
+@brokkr.event
+async def on_member_join(member):
+    server = member.server
+    fmt = 'Welcome {0.mention} to {1.name}!'
+    await brokkr.send_message(server, fmt.format(member, server))
 
 @brokkr.event
 async def on_ready():
