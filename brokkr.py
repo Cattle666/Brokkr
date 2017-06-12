@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-print("Begin Brokkr intialization sequence...")
+print('Begin Brokkr intialization sequence...')
 
 import asyncio
 import aiohttp
@@ -20,18 +20,18 @@ import json
 
 os.chdir(path.dirname(path.abspath(__file__)))
 
-brokkr = Bot(command_prefix="$")
+brokkr = Bot(command_prefix='$')
 
 # Used to define both commands and callbacks:
-Responder = namedtuple("Responder", ("trigger", "run"))
+Responder = namedtuple('Responder', ('trigger', 'run'))
 
 # Used to create fake messges that only contain a content attribute:
 Message_stub = namedtuple('Message_stub', 'content')
 
 repo_dir = '/srv/zandronum/wads'
 
-trigger_prefix = r"(^| |[" + punctuation + "])"
-trigger_suffix = r"( |[" + punctuation + "]|$)"
+trigger_prefix = r"(^| |[" + punctuation + r"])"
+trigger_suffix = r"( |[" + punctuation + r"]|$)"
 
 
 async def check_responder(responder, message):
@@ -176,7 +176,7 @@ def make_callback(trigger, run):
     '''
 
     run_fn = run if callable(run) else lambda message: run
-    trigger_re = ''.join(trigger_prefix, trigger, trigger_suffix)
+    trigger_re = ''.join((trigger_prefix, trigger, trigger_suffix))
     return Responder(trigger_re, run_fn)
 
 
@@ -190,7 +190,7 @@ def make_command(name, run):
 
 responders = (
     make_callback('call of duty', 'Worst VG series ever BTW...'),
-    mkae_callback('complex doom', 'Fuck Complex Doom!'),
+    make_callback('complex doom', 'Fuck Complex Doom!'),
     make_callback('cookie', 'What, you want a cookie!?'),
     make_callback('shit', 'fuck'),
     make_command('$hello', cmd_hello),
@@ -297,5 +297,5 @@ async def on_ready():
 
 
 if __name__ == '__main__':
-    brokkr.run("Bot Token")
+    brokkr.run('Bot Token')
 
