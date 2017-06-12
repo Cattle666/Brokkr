@@ -8,6 +8,7 @@ from collections import namedtuple
 import datetime
 import discord
 from discord.ext.commands import Bot
+from glob import glob
 import random
 import os
 from os import path
@@ -145,7 +146,7 @@ def file_search(directory, query, recursive=True):
 
     cwd = os.getcwd()
     os.chdir(directory)
-    results = glob.glob(query, recursive=recursive)
+    results = glob(query, recursive=recursive)
     os.chdir(cwd)
     results.sort()
     return results
