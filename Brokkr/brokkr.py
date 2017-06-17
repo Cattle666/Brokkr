@@ -16,9 +16,19 @@ import urllib.request
 import urllib.parse
 import re
 from string import punctuation
+import sys
 import json
 
-os.chdir(path.dirname(path.abspath(__file__)))
+
+here = path.dirname(path.abspath(__file__))
+
+# Add the parent directory of the directory this file is in to the system path
+# so this folder is seen as a python package.
+sys.path.append(path.dirname(here))
+
+from Brokkr import secret
+
+os.chdir(here)
 
 brokkr = Bot(command_prefix='$')
 
@@ -165,7 +175,7 @@ async def joinVoiceChannel():
     Example of simple script for bot to join specific voice channel
     ''' 
 
-    channel = brokkr.get_channel('VC_CHANNEL_ID_HERE')
+    channel = brokkr.get_channel(secret.voice_channel)
     voice = await brokkr.join_voice_channel(channel)
     print('Brokkr has joined Staff')
 
@@ -262,7 +272,7 @@ async def on_message(message):
 
     # generate responses for the triggered conditions in parallel filtering out
     # the entries that returned None (by default) which do not need to run:
-    responses = (run(message) for run in filter(bool, _responders))
+    responses = (run(message) for run in filter(callable, _responders))
 
     # wait for all responses to be compiled:
     responses = asyncio.gather(*responses, return_exceptions=True)
@@ -297,5 +307,5 @@ async def on_ready():
 
 
 if __name__ == '__main__':
-    brokkr.run('Bot Token')
+    brokkr.run(secret.token)
 
