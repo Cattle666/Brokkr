@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# vim: autoindent expandtab smartindent tabstop=8 shiftwidth=4 softtabstop=4
 
 print('Begin Brokkr intialization sequence...')
 
@@ -225,6 +226,13 @@ async def respond(message):
         await brokkr.send_message(message.channel, repr(message))
 
 
+def run_batch(jobs, return_exceptions=True):
+    loop = asyncio.get_event_loop()
+    jobs = asyncio.gather(*jobs, return_exceptions=return_exceptions)
+    results = loop.run_until_complete(jobs)
+    loop.close()
+    return results
+
 #Below is a bunch of WIP:
 #
 #@brokkr.listen()
@@ -267,27 +275,16 @@ async def on_message(message):
         return
 
     # check which conditions have been triggered in paralell:
-    responders = (check_responder(l, message) for l in listeners)
-
-    # wait for all the checks to complete:
-    responders = asyncio.gather(*_responders, return_exceptions=True)
-    responders = filter(callable, loop.run_util_complete(responders))
+    checks = (check_responder(l, message) for l in listeners)
+    responders = filter(callable, run_batch(checks))
 
     # generate responses for the triggered conditions in parallel filtering out
     # the entries that returned None (by default) which do not need to run:
-    responses = (run(message) for run in responders)
-
-    # wait for all responses to be compiled:
-    responses = asyncio.gather(*responses, return_exceptions=True)
-    responses = filter(bool, loop.run_util_complete(responses))
+    responses = filter(bool, run_batch((run(message) for run in responders)))
 
     # send out response messages in parallel filtering out those responses that
     # returned None by default (which probably managed the response itself):
-    messages = (respond(message.channel, r) for r in responses)
-
-    # wait for all responses to be sent out:
-    messages = asyncio.gather(*messages, return_exceptions=True)
-    messages = loop.run_util_complete(messages)
+    messages = run_batch((respond(message.channel, r) for r in responses))
 
     errors = (err for err in messages if issubclass(err.__class__, Exception))
     if errors:
@@ -295,6 +292,11 @@ async def on_message(message):
         print('on_message response error{}:'.format(pluralize))
         print('\n'.join(repr(err) for err in errors))
 
+@brokkr.event
+async def on_member_join(member):
+    server = member.server
+    fmt = 'Welcome {0.mention} to {1.name}!'
+    await brokkr.send_message(server, fmt.format(member, server))
 
 @brokkr.event
 async def on_ready():
@@ -313,4 +315,3 @@ async def on_ready():
 
 if __name__ == '__main__':
     brokkr.run(secret.token)
-
