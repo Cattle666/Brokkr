@@ -32,6 +32,8 @@ os.chdir(here)
 
 brokkr = Bot(command_prefix='$')
 
+loop = asyncio.get_event_loop()
+
 # Used to define both commands and callbacks:
 Responder = namedtuple('Responder', ('trigger', 'run'))
 
@@ -198,7 +200,7 @@ def make_command(name, run):
     return Responder(re.compile(r'^' + name + r'($| .*)'), run)
 
 
-responders = (
+listeners = (
     make_callback('call of duty', 'Worst VG series ever BTW...'),
     make_callback('complex doom', 'Fuck Complex Doom!'),
     make_callback('cookie', 'What, you want a cookie!?'),
@@ -265,24 +267,27 @@ async def on_message(message):
         return
 
     # check which conditions have been triggered in paralell:
-    _responders = (check_responder(r, message) for r in responders)
+    responders = (check_responder(l, message) for l in listeners)
 
     # wait for all the checks to complete:
-    _responders = asyncio.gather(*_responders, return_exceptions=True)
+    responders = asyncio.gather(*_responders, return_exceptions=True)
+    responders = filter(callable, loop.run_util_complete(responders))
 
     # generate responses for the triggered conditions in parallel filtering out
     # the entries that returned None (by default) which do not need to run:
-    responses = (run(message) for run in filter(callable, _responders))
+    responses = (run(message) for run in responders)
 
     # wait for all responses to be compiled:
     responses = asyncio.gather(*responses, return_exceptions=True)
+    responses = filter(bool, loop.run_util_complete(responses))
 
     # send out response messages in parallel filtering out those responses that
     # returned None by default (which probably managed the response itself):
-    messages = (respond(message.channel, r) for r in filter(bool, responses))
+    messages = (respond(message.channel, r) for r in responses)
 
     # wait for all responses to be sent out:
     messages = asyncio.gather(*messages, return_exceptions=True)
+    messages = loop.run_util_complete(messages)
 
     errors = (err for err in messages if issubclass(err.__class__, Exception))
     if errors:
